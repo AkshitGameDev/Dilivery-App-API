@@ -8,6 +8,7 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "build": "prisma generate",
+    "migrate:deploy": "prisma migrate deploy",
     "seed": "node scripts/seed.js",
     "test": "echo \"No tests yet\" && exit 0"
   },
