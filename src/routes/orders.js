@@ -1,38 +1,66 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../db.js';
+import { redis } from '../redis.js';
+import { z } from 'zod';
 
 const r = Router();
 
-/**
- * POST /api/import-orders
- * Upserts by (platform, externalId). Stores a payload hash for change detection.
- * Returns: { orderId, status: "created_or_updated" | "no_change" }
- */
+const OrderSchema = z.object({
+  platform: z.string().min(1),
+  order: z.object({
+    externalId: z.string().min(1),
+    placedAt: z.string().datetime().optional(),
+    currency: z.string().optional(),
+    totals: z.object({
+      subtotal: z.number().optional(),
+      shipping: z.number().optional(),
+      tax: z.number().optional(),
+      grand: z.number().optional(),
+    }).optional(),
+    customer: z.object({
+      name: z.string().optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+    }).optional(),
+    items: z.array(z.any()).optional(),
+    shippingAddress: z.any().optional(),
+    status: z.string().optional(),
+  }),
+});
+
 r.post('/import-orders', async (req, res) => {
   try {
-    // basic shape checks (keep simple for now)
-    const { platform, order } = req.body || {};
-    if (!platform || !order?.externalId) {
-      return res.status(400).json({ error: 'platform & order.externalId required' });
+    const parsed = OrderSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    const { platform, order } = parsed.data;
+
+    const idem = req.get('Idempotency-Key');
+    if (idem) {
+      const key = `idem:orders:${idem}`;
+      const set = await redis.set(key, '1', 'NX', 'EX', 120);
+      if (set !== 'OK') {
+        return res.status(409).json({ error: 'duplicate_request' });
+      }
     }
 
-    // Create a stable hash of the payload to detect identical replays
     const hash = crypto
       .createHash('sha256')
-      .update(JSON.stringify(req.body))
+      .update(JSON.stringify(parsed.data))
       .digest('hex');
 
-    // If same order exists with same hash → no_change
     const existing = await prisma.order.findUnique({
       where: { platform_externalId: { platform, externalId: order.externalId } },
-      select: { id: true, rawPayloadHash: true }
+      select: { id: true, rawPayloadHash: true },
     });
     if (existing && existing.rawPayloadHash === hash) {
       return res.json({ orderId: existing.id, status: 'no_change' });
     }
 
-    // Upsert normalized fields
+    const wasExisting = !!existing;
+
     const up = await prisma.order.upsert({
       where: { platform_externalId: { platform, externalId: order.externalId } },
       update: {
@@ -67,13 +95,13 @@ r.post('/import-orders', async (req, res) => {
         shippingAddr: order?.shippingAddress ?? {},
         rawPayloadHash: hash,
       },
-      select: { id: true }
+      select: { id: true },
     });
 
-    res.json({ orderId: up.id, status: 'created_or_updated' });
+    return res.json({ orderId: up.id, status: wasExisting ? 'updated' : 'created' });
   } catch (e) {
     console.error('import-orders error:', e);
-    res.status(500).json({ error: 'internal_error' });
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
