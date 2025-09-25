@@ -5,12 +5,12 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js",
-    "migrate:deploy": "prisma migrate deploy",
-    "seed": "node scripts/seed.js",
-    "postinstall": "prisma generate"
-  },
+  "build": "prisma generate",
+  "dev": "nodemon server.js",
+  "start": "node server.js",
+  "migrate:deploy": "prisma migrate deploy",
+  "seed": "node scripts/seed.js",
+  "postinstall": "prisma generate"},
   "keywords": [],
   "author": "",
   "license": "ISC",
