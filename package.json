@@ -2,15 +2,14 @@
   "name": "dilivery-app-api",
   "version": "1.0.0",
   "description": "",
-  "type": "module",
-  "main": "src/index.js",
+  "type": "commonjs",
+  "main": "server.js",
   "scripts": {
-    "dev": "nodemon src/index.js",
-    "start": "node src/index.js",
-    "build": "prisma generate",
+    "dev": "nodemon server.js",
+    "start": "node server.js",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "node scripts/seed.js",
-    "test": "echo \"No tests yet\" && exit 0"
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
